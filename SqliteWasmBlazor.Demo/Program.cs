@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 using SqliteWasmBlazor.Demo.Services;
 using SqliteWasmBlazor.FloatingWindow.Extensions;
@@ -33,13 +34,24 @@ builder.Services.AddFloatingWindow();
 // Add data change notification service for multi-view synchronization
 builder.Services.AddSingleton<TodoDataNotifier>();
 
-// Add DbContext with SqliteWasm provider
+// Add TodoDbContext with SqliteWasm provider (database: TodoDb.db)
 builder.Services.AddDbContextFactory<TodoDbContext>(options =>
 {
 #if DEBUG
     var connection = new SqliteWasmConnection("Data Source=TodoDb.db", LogLevel.Information);
 #else
     var connection = new SqliteWasmConnection("Data Source=TodoDb.db", LogLevel.Error);
+#endif
+    options.UseSqliteWasm(connection);
+});
+
+// Add NoteDbContext with SqliteWasm provider (database: NotesDb.db)
+builder.Services.AddDbContextFactory<NoteDbContext>(options =>
+{
+#if DEBUG
+    var connection = new SqliteWasmConnection("Data Source=NotesDb.db", LogLevel.Information);
+#else
+    var connection = new SqliteWasmConnection("Data Source=NotesDb.db", LogLevel.Error);
 #endif
     options.UseSqliteWasm(connection);
 });
@@ -55,8 +67,8 @@ await FileOperationsInterop.InitializeAsync();
 
 var host = builder.Build();
 
-// Initialize SqliteWasm database with migration support
-// Log level is configured via SqliteWasmConnection constructor above
+// Initialize SqliteWasm databases with migration support
 await host.Services.InitializeSqliteWasmDatabaseAsync<TodoDbContext>();
+await host.Services.InitializeSqliteWasmDatabaseAsync<NoteDbContext>();
 
 await host.RunAsync();

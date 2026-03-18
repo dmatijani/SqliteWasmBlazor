@@ -6,6 +6,7 @@
 @using SqliteWasmBlazor.Models.Models
 @using SqliteWasmBlazor.Models.Extensions
 @inject IDbContextFactory<TodoDbContext> DbContextFactory
+@inject IDbContextFactory<NoteDbContext> NoteDbContextFactory
 @inject ISnackbar Snackbar
 @inject ILogger<Administration> Logger
 @inject ISqliteWasmDatabaseService DatabaseService
@@ -693,12 +694,16 @@
 
         try
         {
-            // Delete the database file from OPFS SAHPool
+            // Delete all database files from OPFS SAHPool
             await DatabaseService.DeleteDatabaseAsync("TodoDb.db");
+            await DatabaseService.DeleteDatabaseAsync("NotesDb.db");
 
-            // Recreate database schema (migrations include FTS5 setup)
-            await using var context = await DbContextFactory.CreateDbContextAsync();
-            await context.Database.MigrateAsync();
+            // Recreate database schemas (migrations include FTS5 setup)
+            await using var todoContext = await DbContextFactory.CreateDbContextAsync();
+            await todoContext.Database.MigrateAsync();
+
+            await using var noteContext = await NoteDbContextFactory.CreateDbContextAsync();
+            await noteContext.Database.MigrateAsync();
 
             stopwatch.Stop();
 

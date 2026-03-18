@@ -21,6 +21,7 @@ The public API surface is intentionally kept minimal to reduce the risk of break
 
 ## What's New
 
+- **Multi-Database Support** - Run multiple independent SQLite databases simultaneously in the same Web Worker, each with its own OPFS file, DbContext, and migration history. Supports cross-database references via loose Guid linking [(details)](docs/multi-database.md)
 - **Multi-View Demo** - Floating draggable/resizable dialog windows using lightweight JS interop on top of standard MudBlazor dialogs [(details)](docs/patterns.md#multi-view-instead-of-multi-tab)
 - **Incremental Database Export/Import** - File-based delta sync with checkpoint management and conflict resolution for offline-first PWAs [(details)](CHANGELOG.md#incremental-database-exportimport-delta-sync)
 - **Database Import/Export** - Schema-validated MessagePack serialization for backups and data migration [(details)](CHANGELOG.md#database-importexport)
@@ -289,6 +290,7 @@ var expensive = await dbContext.Products
 | [Architecture](docs/architecture.md) | Worker-based architecture, how it works, technical details |
 | [ADO.NET Usage](docs/ado-net.md) | Using SqliteWasmBlazor without EF Core, transactions |
 | [Advanced Features](docs/advanced-features.md) | Migrations, FTS5 search, JSON collections, logging |
+| [Multi-Database](docs/multi-database.md) | Running multiple databases, cross-database references |
 | [Recommended Patterns](docs/patterns.md) | Multi-view pattern, data initialization best practices |
 | [FAQ](docs/faq.md) | Common questions and browser support |
 | [Changelog](CHANGELOG.md) | Release notes and version history |
@@ -317,7 +319,7 @@ All modern browsers (2023+) support OPFS with Synchronous Access Handles, includ
 - [x] Database export/import API
 - [x] Backup/restore utilities (delta sync with checkpoints)
 - [ ] Stable NuGet package release
-- [ ] Multi-database support
+- [x] Multi-database support
 - [ ] Performance profiling tools
 
 ## Contributing
