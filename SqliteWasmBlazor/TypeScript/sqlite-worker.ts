@@ -31,6 +31,7 @@ interface WorkerResponse {
         };
         rowsAffected?: number;
         lastInsertId?: number;
+        binaryData?: Uint8Array;
     };
 }
 
@@ -682,7 +683,42 @@ async function exportDatabase(dbName: string) {
     }
 
     try {
-        console.log("EXPORT DATABASE TODO");
+        logger.info(MODULE_NAME, `Exporting database ${dbName}`);
+
+        const dbPath = `/databases/${dbName}`;
+
+        // Try to check file existence using poolUtil's file list
+        // The poolUtil exposes information about stored databases
+        if (poolUtil.getFileNames) {
+            const files = await poolUtil.getFileNames();
+            const exists = files.includes(dbPath);
+            if (!exists) {
+                logger.error(MODULE_NAME, `Database ${dbName} does not exist`);
+                throw new Error(`Database ${dbName} does not exist`);
+            }
+        }
+
+        let db = openDatabases.get(dbName);
+        const wasOpen = !!db;
+
+        if (!db) {
+            db = new poolUtil.OpfsSAHPoolDb(dbPath);
+        }
+
+        try {
+            db.exec('PRAGMA wal_checkpoint(FULL);');
+
+            const bytes = sqlite3.capi.sqlite3_js_db_export(db);
+            var response = {
+                binaryData: bytes
+            };
+
+            return pack(response);
+        } finally {
+            if (!wasOpen) {
+                db.close();
+            }
+        }
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to export database ${dbName}:`, error);
         throw error;

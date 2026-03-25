@@ -21,6 +21,7 @@ internal sealed class SqlQueryResult
     public object?[][] Rows { get; set; } = [];
     public int RowsAffected { get; set; }
     public long LastInsertId { get; set; }
+    public byte[]? BinaryData { get; set; }
 }
 
 /// <summary>
@@ -234,8 +235,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         };
 
         var response = await SendRequestAsync(request, cancellationToken);
-
-        return null; // TODO vratiti exportanu bazu na neki nacin
+        return response.BinaryData;
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
@@ -344,7 +344,8 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                     ColumnTypes = response.ColumnTypes ?? [],
                     Rows = [],
                     RowsAffected = response.RowsAffected,
-                    LastInsertId = response.LastInsertId
+                    LastInsertId = response.LastInsertId,
+                    BinaryData = response.BinaryData
                 };
 
                 tcs.TrySetResult(result);
@@ -419,6 +420,10 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                 ? ConvertToInt64(liiValue)
                 : 0L;
 
+            var binaryData = responseDict.TryGetValue("binaryData", out var bdValue)
+                ? bdValue as byte[]
+                : null;
+
             // Complete the pending request
             if (Instance._pendingRequests.TryRemove(requestId, out var tcs))
             {
@@ -428,7 +433,8 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                     ColumnTypes = columnTypes,
                     Rows = rows,
                     RowsAffected = rowsAffected,
-                    LastInsertId = lastInsertId
+                    LastInsertId = lastInsertId,
+                    BinaryData = binaryData
                 };
 
                 tcs.TrySetResult(result);
@@ -545,6 +551,7 @@ internal sealed class WorkerResponse
     public List<string>? ColumnTypes { get; set; }
     public int RowsAffected { get; set; }
     public long LastInsertId { get; set; }
+    public byte[]? BinaryData { get; set; }
 }
 
 /// <summary>
