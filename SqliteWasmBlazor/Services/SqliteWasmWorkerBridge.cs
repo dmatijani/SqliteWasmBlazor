@@ -204,6 +204,40 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         await SendRequestAsync(request, cancellationToken);
     }
 
+    /// <summary>
+    /// Imports a database from a byte array to OPFS.
+    /// </summary>
+    public async Task ImportDatabaseAsync(string databaseName, byte[] data, CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        var request = new
+        {
+            type = "import",
+            database = databaseName
+        };
+
+        await SendRequestAsync(request, data, cancellationToken);
+    }
+
+    /// <summary>
+    /// Exports a database to a byte array from OPFS.
+    /// </summary>
+    public async Task<byte[]?> ExportDatabaseAsync(string databaseName, CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        var request = new
+        {
+            type = "export",
+            database = databaseName
+        };
+
+        var response = await SendRequestAsync(request, cancellationToken);
+
+        return null; // TODO vratiti exportanu bazu na neki nacin
+    }
+
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         if (!_isInitialized)
@@ -212,7 +246,12 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         }
     }
 
-    private async Task<SqlQueryResult> SendRequestAsync(object request, CancellationToken cancellationToken)
+    private Task<SqlQueryResult> SendRequestAsync(object request, CancellationToken cancellationToken)
+    {
+        return SendRequestAsync(request, null, cancellationToken);
+    }
+
+    private async Task<SqlQueryResult> SendRequestAsync(object request, byte[]? binaryData, CancellationToken cancellationToken)
     {
         var requestId = Interlocked.Increment(ref _nextRequestId);
         var tcs = new TaskCompletionSource<SqlQueryResult>();
@@ -233,7 +272,13 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                 data = request
             });
 
-            SendToWorker(requestJson);
+            if (binaryData != null && binaryData.Any())
+            {
+                SendBinaryDataToWorker(requestJson, binaryData);
+            } else
+            {
+                SendToWorker(requestJson);
+            }
 
             // Add timeout to detect when another tab has the database locked
             // Use longer timeout in debug mode for operations like VACUUM INTO
@@ -474,6 +519,9 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
 
     [JSImport("sendToWorker", "sqliteWasmWorker")]
     private static partial void SendToWorker(string messageJson);
+
+    [JSImport("sendBinaryDataToWorker", "sqliteWasmWorker")]
+    private static partial void SendBinaryDataToWorker(string messageJson, byte[] binaryData);
 }
 
 /// <summary>

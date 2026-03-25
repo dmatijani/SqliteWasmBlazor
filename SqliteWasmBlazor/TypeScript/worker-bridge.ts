@@ -82,6 +82,17 @@ export function sendToWorker(messageJson: string): void {
     worker.postMessage(message);
 }
 
+// Called from C# to send request to worker and appends the binary data to the message
+export function sendBinaryDataToWorker(messageJson: string, binaryData: Uint8Array): void {
+    if (!worker) {
+        throw new Error('Worker not initialized');
+    }
+
+    const message = JSON.parse(messageJson);
+    message.data.binaryData = binaryData;
+    worker.postMessage(message);
+}
+
 // Logger API - matches C# SqliteWasmLogLevel enum
 export const logger = {
     setLogLevel(level: number): void {

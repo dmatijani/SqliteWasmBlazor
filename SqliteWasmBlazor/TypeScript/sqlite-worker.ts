@@ -14,6 +14,7 @@ interface WorkerRequest {
         database?: string;
         sql?: string;
         parameters?: Record<string, any>;
+        binaryData?: Uint8Array
     };
 }
 
@@ -203,7 +204,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest | { type: 'setLogLevel
 };
 
 async function handleRequest(data: WorkerRequest['data']) {
-    const { type, database, sql, parameters } = data;
+    const { type, database, sql, parameters, binaryData } = data;
 
     switch (type) {
         case 'open':
@@ -223,6 +224,12 @@ async function handleRequest(data: WorkerRequest['data']) {
 
         case 'rename':
             return await renameDatabase(database!, (data as any).newName);
+
+        case 'import':
+            return await importDatabase(database!, binaryData);
+
+        case 'export':
+            return await exportDatabase(database!);
 
         default:
             throw new Error(`Unknown request type: ${type}`);
@@ -630,6 +637,34 @@ async function renameDatabase(oldName: string, newName: string) {
         return { success: true };
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to rename database from ${oldName} to ${newName}:`, error);
+        throw error;
+    }
+}
+
+async function importDatabase(dbName: string, data: Uint8Array) {
+    if (!sqlite3 || !poolUtil) {
+        throw new Error('SQLite not initialized');
+    }
+
+    try {
+        // TODO implementacija
+        logger.debug(MODULE_NAME, `IMPORT DATABASE TODO`);
+    } catch (error) {
+        logger.error(MODULE_NAME, `Failed to import database ${dbName}:`, error);
+        throw error;
+    }
+}
+
+async function exportDatabase(dbName: string) {
+    if (!sqlite3 || !poolUtil) {
+        throw new Error('SQLite not initialized');
+    }
+
+    try {
+        // TODO implementacija
+        logger.debug(MODULE_NAME, `EXPORT DATABASE TODO`);
+    } catch (error) {
+        logger.error(MODULE_NAME, `Failed to export database ${dbName}:`, error);
         throw error;
     }
 }

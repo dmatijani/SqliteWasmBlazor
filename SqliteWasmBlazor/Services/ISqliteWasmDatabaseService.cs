@@ -39,4 +39,18 @@ public interface ISqliteWasmDatabaseService
     /// <param name="databaseName">The database filename to close</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task CloseDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Imports a database from a byte array to OPFS.
+    /// </summary>
+    /// <param name="databaseName">The database filename to import</param>
+    /// <param name="data">Byte array of the database file</param>
+    Task ImportDatabaseAsync(string databaseName, byte[] data, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Exports a database to a byte array from OPFS.
+    /// </summary>
+    /// <param name="databaseName">The database filename in OPFS to export</param>
+    /// <returns>Byte array of the database file, if found</returns>
+    Task<byte[]?> ExportDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
 }
