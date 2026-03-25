@@ -272,7 +272,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                 data = request
             });
 
-            if (binaryData != null && binaryData.Any())
+            if (binaryData != null)
             {
                 SendBinaryDataToWorker(requestJson, binaryData);
             } else

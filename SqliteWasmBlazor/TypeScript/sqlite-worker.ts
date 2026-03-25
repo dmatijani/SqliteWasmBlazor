@@ -226,7 +226,7 @@ async function handleRequest(data: WorkerRequest['data']) {
             return await renameDatabase(database!, (data as any).newName);
 
         case 'import':
-            return await importDatabase(database!, binaryData);
+            return await importDatabase(database!, binaryData!);
 
         case 'export':
             return await exportDatabase(database!);
@@ -647,8 +647,29 @@ async function importDatabase(dbName: string, data: Uint8Array) {
     }
 
     try {
-        // TODO implementacija
-        logger.debug(MODULE_NAME, `IMPORT DATABASE TODO`);
+        logger.info(MODULE_NAME, `Importing database ${dbName}`);
+
+        // Checks if database is currently open
+        if (openDatabases.has(dbName)) {
+            logger.debug(MODULE_NAME, `Database ${dbName} is already open - try closing it then deleting it before import`);
+            return;
+        }
+
+        const dbPath = `/databases/${dbName}`;
+
+        // Try to check file existence using poolUtil's file list
+        // The poolUtil exposes information about stored databases
+        if (poolUtil.getFileNames) {
+            const files = await poolUtil.getFileNames();
+            const exists = files.includes(dbPath);
+            if (exists) {
+                logger.debug(MODULE_NAME, `Database ${dbName} already exists in OPFS - try deleting it before import`);
+                return;
+            }
+        }
+
+        await poolUtil.importDb(dbPath, data);
+        logger.info(MODULE_NAME, `✓ Successfully imported database ${dbName} into OPFS`);
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to import database ${dbName}:`, error);
         throw error;
@@ -661,8 +682,7 @@ async function exportDatabase(dbName: string) {
     }
 
     try {
-        // TODO implementacija
-        logger.debug(MODULE_NAME, `EXPORT DATABASE TODO`);
+        console.log("EXPORT DATABASE TODO");
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to export database ${dbName}:`, error);
         throw error;
