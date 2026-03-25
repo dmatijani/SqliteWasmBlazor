@@ -11,6 +11,15 @@ using MessagePack.Resolvers;
 namespace SqliteWasmBlazor;
 
 /// <summary>
+/// Can hold either a SqlQueryResult or binary data
+/// </summary>
+internal sealed class ResultWrapper
+{
+    public SqlQueryResult SqlQueryResult { get; set; }
+    public byte[]? BinaryData { get; set; }
+}
+
+/// <summary>
 /// Result from SQL query execution in worker.
 /// Deserialized using MessagePack typeless mode due to dynamic object?[][] data.
 /// </summary>
@@ -21,7 +30,6 @@ internal sealed class SqlQueryResult
     public object?[][] Rows { get; set; } = [];
     public int RowsAffected { get; set; }
     public long LastInsertId { get; set; }
-    public byte[]? BinaryData { get; set; }
 }
 
 /// <summary>
@@ -34,7 +42,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
     private static readonly Lazy<SqliteWasmWorkerBridge> _instance = new(() => new SqliteWasmWorkerBridge());
     public static SqliteWasmWorkerBridge Instance => _instance.Value;
 
-    private readonly ConcurrentDictionary<int, TaskCompletionSource<SqlQueryResult>> _pendingRequests = new();
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<ResultWrapper>> _pendingRequests = new();
     private int _nextRequestId;
     private bool _isInitialized;
     private static TaskCompletionSource<bool>? _initializationTcs;
@@ -151,8 +159,8 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
             parameters
         };
 
-        // SendRequestAsync now returns SqlQueryResult directly - no deserialization needed
-        return await SendRequestAsync(request, cancellationToken);
+        var result = await SendRequestAsync(request, cancellationToken);
+        return result.SqlQueryResult;
     }
 
     /// <summary>
@@ -170,7 +178,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         var result = await SendRequestAsync(request, cancellationToken);
 
         // Worker returns exists: true/false in the response
-        return result.RowsAffected > 0;
+        return result.SqlQueryResult.RowsAffected > 0;
     }
 
     /// <summary>
@@ -234,8 +242,8 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
             database = databaseName
         };
 
-        var response = await SendRequestAsync(request, cancellationToken);
-        return response.BinaryData;
+        var result = await SendRequestAsync(request, cancellationToken);
+        return result.BinaryData;
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
@@ -246,15 +254,15 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         }
     }
 
-    private Task<SqlQueryResult> SendRequestAsync(object request, CancellationToken cancellationToken)
+    private Task<ResultWrapper> SendRequestAsync(object request, CancellationToken cancellationToken)
     {
         return SendRequestAsync(request, null, cancellationToken);
     }
 
-    private async Task<SqlQueryResult> SendRequestAsync(object request, byte[]? binaryData, CancellationToken cancellationToken)
+    private async Task<ResultWrapper> SendRequestAsync(object request, byte[]? binaryData, CancellationToken cancellationToken)
     {
         var requestId = Interlocked.Increment(ref _nextRequestId);
-        var tcs = new TaskCompletionSource<SqlQueryResult>();
+        var tcs = new TaskCompletionSource<ResultWrapper>();
 
         _pendingRequests[requestId] = tcs;
 
@@ -344,11 +352,14 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                     ColumnTypes = response.ColumnTypes ?? [],
                     Rows = [],
                     RowsAffected = response.RowsAffected,
-                    LastInsertId = response.LastInsertId,
-                    BinaryData = response.BinaryData
+                    LastInsertId = response.LastInsertId
                 };
 
-                tcs.TrySetResult(result);
+                tcs.TrySetResult(new ResultWrapper
+                {
+                    SqlQueryResult = result,
+                    BinaryData = response.BinaryData
+                });
             }
         }
         catch (Exception ex)
@@ -433,11 +444,14 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                     ColumnTypes = columnTypes,
                     Rows = rows,
                     RowsAffected = rowsAffected,
-                    LastInsertId = lastInsertId,
-                    BinaryData = binaryData
+                    LastInsertId = lastInsertId
                 };
 
-                tcs.TrySetResult(result);
+                tcs.TrySetResult(new ResultWrapper
+                {
+                    SqlQueryResult = result,
+                    BinaryData = binaryData
+                });
             }
         }
         catch (Exception ex)

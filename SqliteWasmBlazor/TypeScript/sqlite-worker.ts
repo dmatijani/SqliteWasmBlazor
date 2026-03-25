@@ -648,29 +648,38 @@ async function importDatabase(dbName: string, data: Uint8Array) {
     }
 
     try {
-        logger.info(MODULE_NAME, `Importing database ${dbName}`);
-
-        // Checks if database is currently open
-        if (openDatabases.has(dbName)) {
-            logger.debug(MODULE_NAME, `Database ${dbName} is already open - try closing it then deleting it before import`);
-            return;
-        }
-
         const dbPath = `/databases/${dbName}`;
 
-        // Try to check file existence using poolUtil's file list
-        // The poolUtil exposes information about stored databases
+        logger.info(MODULE_NAME, `Importing database ${dbName}`);
+
+        // Ensure database is closed before import
+        logger.debug(MODULE_NAME, `Ensuring database is closed before import operation`);
+        await closeDatabase(dbName);
+
+        // Debug: Show what files are in OPFS before import
         if (poolUtil.getFileNames) {
-            const files = await poolUtil.getFileNames();
-            const exists = files.includes(dbPath);
+            const filesInOPFS = poolUtil.getFileNames();
+            logger.debug(MODULE_NAME, `Files currently in OPFS (${filesInOPFS.length}):`, filesInOPFS);
+            const exists = filesInOPFS.includes(dbPath);
             if (exists) {
-                logger.debug(MODULE_NAME, `Database ${dbName} already exists in OPFS - try deleting it before import`);
-                return;
+                logger.debug(MODULE_NAME, `Database ${dbName} already exists in OPFS - will be overwritten`);
             }
         }
 
         await poolUtil.importDb(dbPath, data);
         logger.info(MODULE_NAME, `✓ Successfully imported database ${dbName} into OPFS`);
+
+        // Debug: Verify import worked
+        if (poolUtil.getFileNames) {
+            const filesAfterImport = poolUtil.getFileNames();
+            const isInOPFS = filesAfterImport.includes(dbPath);
+            logger.debug(MODULE_NAME, `Database ${dbName} in OPFS after import: ${isInOPFS}, Total files: ${filesAfterImport.length}`);
+            if (!isInOPFS) {
+                logger.warn(MODULE_NAME, `WARNING: Database ${dbName} was imported but is not in OPFS file list!`);
+            }
+        }
+
+        return { success: true };
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to import database ${dbName}:`, error);
         throw error;
@@ -683,39 +692,44 @@ async function exportDatabase(dbName: string) {
     }
 
     try {
-        logger.info(MODULE_NAME, `Exporting database ${dbName}`);
-
         const dbPath = `/databases/${dbName}`;
 
-        // Try to check file existence using poolUtil's file list
-        // The poolUtil exposes information about stored databases
+        logger.info(MODULE_NAME, `Exporting database ${dbName}`);
+
+        // Debug: Show what files are in OPFS before export
         if (poolUtil.getFileNames) {
-            const files = await poolUtil.getFileNames();
-            const exists = files.includes(dbPath);
+            const filesInOPFS = poolUtil.getFileNames();
+            logger.debug(MODULE_NAME, `Files currently in OPFS (${filesInOPFS.length}):`, filesInOPFS);
+            logger.debug(MODULE_NAME, `Looking for: ${dbPath}`);
+            const exists = filesInOPFS.includes(dbPath);
+            logger.debug(MODULE_NAME, `File exists in OPFS: ${exists}`);
             if (!exists) {
-                logger.error(MODULE_NAME, `Database ${dbName} does not exist`);
-                throw new Error(`Database ${dbName} does not exist`);
+                throw new Error(`Database ${dbName} does not exist in OPFS`);
             }
         }
 
+        // Open database if not already open
         let db = openDatabases.get(dbName);
         const wasOpen = !!db;
+        logger.debug(MODULE_NAME, `Database ${dbName} was ${wasOpen ? 'already open' : 'not open, opening for export'}`);
 
         if (!db) {
             db = new poolUtil.OpfsSAHPoolDb(dbPath);
         }
 
         try {
+            // Checkpoint WAL to ensure all data is in the main database file
+            logger.debug(MODULE_NAME, `Running WAL checkpoint for ${dbName} before export`);
             db.exec('PRAGMA wal_checkpoint(FULL);');
 
             const bytes = sqlite3.capi.sqlite3_js_db_export(db);
-            var response = {
-                binaryData: bytes
-            };
+            logger.info(MODULE_NAME, `✓ Successfully exported database ${dbName} (${bytes.byteLength} bytes)`);
 
-            return pack(response);
+            return pack({ binaryData: bytes });
         } finally {
+            // Close only if we opened it
             if (!wasOpen) {
+                logger.debug(MODULE_NAME, `Closing database ${dbName} after export (was not open before)`);
                 db.close();
             }
         }
