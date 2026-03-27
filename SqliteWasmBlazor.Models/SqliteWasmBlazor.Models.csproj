@@ -15,9 +15,10 @@
       <IncludeAssets>runtime; analyzers</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="SqliteWasmBlazor" Version="$(SqliteWasmBlazorVersion)" Condition="'$(Configuration)' == 'Release'" />
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
     <ProjectReference Include="..\SqliteWasmBlazor\SqliteWasmBlazor.csproj" />
   </ItemGroup>
 
