@@ -39,4 +39,24 @@ public interface ISqliteWasmDatabaseService
     /// <param name="databaseName">The database filename to close</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task CloseDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Imports a raw .db file into OPFS.
+    /// The database is not opened after import - caller must re-open when ready
+    /// (e.g., after cleaning up backup files to avoid SAH pool exhaustion).
+    /// </summary>
+    /// <param name="databaseName">The database filename (e.g., "mydb.db")</param>
+    /// <param name="data">Raw SQLite database bytes</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task ImportDatabaseAsync(string databaseName, byte[] data, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Exports a raw .db file from OPFS.
+    /// The database is closed before export for a consistent snapshot.
+    /// Caller must re-open the database after export.
+    /// </summary>
+    /// <param name="databaseName">The database filename (e.g., "mydb.db")</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Raw SQLite database bytes</returns>
+    Task<byte[]> ExportDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
 }

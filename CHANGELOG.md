@@ -34,8 +34,104 @@ All notable changes to SqliteWasmBlazor are documented in this file.
 - `DeleteDatabaseAsync(string databaseName)` - Delete database from OPFS
 - `RenameDatabaseAsync(string oldName, string newName)` - Rename database (atomic)
 - `CloseDatabaseAsync(string databaseName)` - Close database connection in worker
+- `ImportDatabaseAsync(string databaseName, byte[] data)` - Import raw .db file into OPFS
+- `ExportDatabaseAsync(string databaseName)` - Export raw .db file from OPFS
 
 This change encapsulates internal implementation details and provides a stable API surface for future versions.
+
+---
+
+## Raw Database Import/Export
+
+Export and import complete SQLite .db files directly from/to OPFS. Unlike the MessagePack-based import/export (which serializes individual records), this transfers the raw database file as-is — preserving all tables, indexes, FTS5 virtual tables, triggers, and migration history.
+
+### API
+
+```csharp
+@inject ISqliteWasmDatabaseService DatabaseService
+
+// Export: closes DB for consistent snapshot, returns raw bytes
+byte[] data = await DatabaseService.ExportDatabaseAsync("TodoDb.db");
+
+// Import: writes raw .db file to OPFS (validates SQLite header)
+await DatabaseService.ImportDatabaseAsync("TodoDb.db", data);
+```
+
+**Important:** Both operations close the database in the worker. The connection state tracking (`IsDatabaseOpen`) ensures subsequent EF Core queries automatically re-open the database — no manual re-open needed.
+
+### Schema Validation
+
+After importing a raw .db file, validate that it has the correct schema before use:
+
+```csharp
+using SqliteWasmBlazor.Models.Extensions;
+
+await using var ctx = await DbContextFactory.CreateDbContextAsync();
+await ctx.ValidateSchemaAsync(); // throws InvalidOperationException if tables are missing
+```
+
+`ValidateSchemaAsync` reads expected table names from the EF model metadata (`GetEntityTypes()` + `GetTableName()`) and checks them against `sqlite_master`. This catches incompatible databases (e.g., importing a file from a different application) with a clear error message listing the missing tables.
+
+### Safe Import with Backup/Restore
+
+The demo app implements a safe import pattern with transient backup:
+
+```csharp
+// 1. Backup existing database
+await DatabaseService.CloseDatabaseAsync("TodoDb.db");
+await DatabaseService.RenameDatabaseAsync("TodoDb.db", "TodoDb.backup.db");
+
+// 2. Import new file
+await DatabaseService.ImportDatabaseAsync("TodoDb.db", data);
+
+// 3. Validate schema
+try
+{
+    await using var ctx = await DbContextFactory.CreateDbContextAsync();
+    await ctx.ValidateSchemaAsync();
+
+    // 4. Success — delete backup
+    await DatabaseService.DeleteDatabaseAsync("TodoDb.backup.db");
+}
+catch (InvalidOperationException)
+{
+    // 5. Failed — restore from backup
+    await DatabaseService.DeleteDatabaseAsync("TodoDb.db");
+    await DatabaseService.RenameDatabaseAsync("TodoDb.backup.db", "TodoDb.db");
+    throw;
+}
+```
+
+### Connection State Tracking
+
+The worker bridge tracks which databases are open on the worker side. `SqliteWasmConnection.State` reflects the actual worker state, not just the C#-side `_state` field. This prevents stale connection issues after import/export/delete/rename operations:
+
+```
+Operation Flow:
+├─ ExportDatabaseAsync("TodoDb.db")     → worker closes DB → bridge marks as not open
+├─ EF Core query via DbContextFactory   → State returns Closed (bridge says not open)
+│  └─ EF Core calls OpenAsync           → bridge sends open to worker → DB reopened
+├─ Query executes successfully           → worker has DB open
+```
+
+Without this tracking, EF Core would see `State == Open` (stale from before export), skip `OpenAsync`, and send SQL to a worker that has the DB closed.
+
+### SAH Pool Capacity
+
+The OPFS SAH pool `initialCapacity` only applies on first creation. For existing pools, `reserveMinimumCapacity(10)` grows the pool to handle backup files during import:
+
+```
+Capacity math: 2 DBs × 3 files (db + shm + wal) = 6 normal + backup + journal headroom = 10
+```
+
+### Demo App
+
+The `DatabaseImportExport.razor` page in the demo app provides a complete UI with:
+- Export button (downloads timestamped .db file)
+- Import with file picker (.db filter)
+- Confirmation dialog for destructive replace (red "Replace Database" button)
+- Schema validation with automatic backup/restore on failure
+- Snackbar notifications for success/error states
 
 ---
 

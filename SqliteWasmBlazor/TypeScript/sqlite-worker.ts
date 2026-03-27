@@ -15,6 +15,7 @@ interface WorkerRequest {
         sql?: string;
         parameters?: Record<string, any>;
     };
+    binaryPayload?: ArrayBuffer;
 }
 
 interface WorkerResponse {
@@ -128,11 +129,14 @@ async function initializeSQLite() {
 
         // Install OPFS SAHPool VFS
         poolUtil = await sqlite3.installOpfsSAHPoolVfs({
-            initialCapacity: 6,
+            initialCapacity: 10,
             directory: '/databases',
             name: 'opfs-sahpool',
             clearOnInit: false
         });
+
+        // Grow pool if previously created with smaller capacity (initialCapacity only applies on first creation)
+        await poolUtil.reserveMinimumCapacity(10);
 
         logger.info(MODULE_NAME, 'OPFS SAHPool VFS installed successfully');
         logger.debug(MODULE_NAME, 'Available VFS:', sqlite3.capi.sqlite3_vfs_find(null));
@@ -166,13 +170,22 @@ self.onmessage = async (event: MessageEvent<WorkerRequest | { type: 'setLogLevel
     }
 
     // Handle regular requests
-    const { id, data } = event.data as WorkerRequest;
+    const { id, data, binaryPayload } = event.data as WorkerRequest;
 
     try {
-        const result = await handleRequest(data);
+        const result = await handleRequest(data, binaryPayload);
 
+        // Check if result contains raw binary data (export operations)
+        if (result && typeof result === 'object' && 'rawBinary' in result && result.rawBinary) {
+            const binaryData = result.data as Uint8Array;
+            self.postMessage({
+                id,
+                rawBinary: true,
+                data: binaryData
+            }, [binaryData.buffer]);
+        }
         // Check if result is MessagePack binary (Uint8Array)
-        if (result instanceof Uint8Array) {
+        else if (result instanceof Uint8Array) {
             self.postMessage({
                 id,
                 binary: true,
@@ -202,7 +215,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest | { type: 'setLogLevel
     }
 };
 
-async function handleRequest(data: WorkerRequest['data']) {
+async function handleRequest(data: WorkerRequest['data'], binaryPayload?: ArrayBuffer) {
     const { type, database, sql, parameters } = data;
 
     switch (type) {
@@ -223,6 +236,15 @@ async function handleRequest(data: WorkerRequest['data']) {
 
         case 'rename':
             return await renameDatabase(database!, (data as any).newName);
+
+        case 'importDb':
+            if (!binaryPayload) {
+                throw new Error('importDb requires binaryPayload');
+            }
+            return await importDatabase(database!, new Uint8Array(binaryPayload));
+
+        case 'exportDb':
+            return await exportDatabase(database!);
 
         default:
             throw new Error(`Unknown request type: ${type}`);
@@ -630,6 +652,54 @@ async function renameDatabase(oldName: string, newName: string) {
         return { success: true };
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to rename database from ${oldName} to ${newName}:`, error);
+        throw error;
+    }
+}
+
+async function importDatabase(dbName: string, data: Uint8Array) {
+    if (!sqlite3 || !poolUtil) {
+        throw new Error('SQLite not initialized');
+    }
+
+    try {
+        logger.info(MODULE_NAME, `Importing database ${dbName} (${data.length} bytes)`);
+
+        // Close database if open (SAHPool requirement)
+        await closeDatabase(dbName);
+
+        // Import the raw database file into OPFS SAHPool
+        const dbPath = `/databases/${dbName}`;
+        poolUtil.importDb(dbPath, data);
+
+        logger.info(MODULE_NAME, `✓ Imported database: ${dbName} (${data.length} bytes)`);
+
+        return { success: true, rowsAffected: data.length };
+    } catch (error) {
+        logger.error(MODULE_NAME, `Failed to import database ${dbName}:`, error);
+        throw error;
+    }
+}
+
+async function exportDatabase(dbName: string) {
+    if (!sqlite3 || !poolUtil) {
+        throw new Error('SQLite not initialized');
+    }
+
+    try {
+        logger.info(MODULE_NAME, `Exporting database ${dbName}`);
+
+        // Close database for consistent snapshot (SAHPool requirement)
+        await closeDatabase(dbName);
+
+        // Export the raw database file from OPFS SAHPool
+        const dbPath = `/databases/${dbName}`;
+        const data: Uint8Array = poolUtil.exportFile(dbPath);
+
+        logger.info(MODULE_NAME, `✓ Exported database: ${dbName} (${data.length} bytes)`);
+
+        return { rawBinary: true, data };
+    } catch (error) {
+        logger.error(MODULE_NAME, `Failed to export database ${dbName}:`, error);
         throw error;
     }
 }

@@ -82,6 +82,9 @@ public abstract class SqliteWasmTestBase(IWaFixture fixture, ITestOutputHelper o
     [InlineData("ExportImport_DeltaConflict_LocalWins")]
     [InlineData("ExportImport_DeltaConflict_DeltaWins")]
     [InlineData("ExportImport_DeltaDeletion")]
+    // Raw Database Import/Export Tests
+    [InlineData("ExportImport_RawDatabase")]
+    [InlineData("ImportRawDatabase_InvalidFile")]
     // Checkpoint Tests
     [InlineData("RestoreToCheckpoint_Basic")]
     [InlineData("RestoreToCheckpoint_WithDeltaReapply")]

@@ -1,6 +1,16 @@
 // worker-bridge.ts
 // Bridge between C# JSImport and Web Worker
 
+/**
+ * IMemoryView interface from dotnet runtime
+ * Represents a view over managed memory (Span/ArraySegment)
+ */
+interface IMemoryView {
+    slice(): Uint8Array;
+    slice(start: number): Uint8Array;
+    slice(start: number, end: number): Uint8Array;
+}
+
 let worker: Worker | null = null;
 
 // Initialize worker on first import
@@ -45,8 +55,15 @@ let worker: Worker | null = null;
                 try {
                     const exports = await (globalThis as any).getDotnetRuntime(0).getAssemblyExports("SqliteWasmBlazor.dll");
 
+                    // Check if raw binary data (export operations)
+                    if (event.data.rawBinary && event.data.data instanceof Uint8Array) {
+                        exports.SqliteWasmBlazor.SqliteWasmWorkerBridge.OnWorkerResponseRawBinary(
+                            event.data.id,
+                            event.data.data
+                        );
+                    }
                     // Check if binary MessagePack data
-                    if (event.data.binary && event.data.data instanceof Uint8Array) {
+                    else if (event.data.binary && event.data.data instanceof Uint8Array) {
                         // Zero-copy binary path: Uint8Array → Span<byte>
                         exports.SqliteWasmBlazor.SqliteWasmWorkerBridge.OnWorkerResponseBinary(
                             event.data.id,
@@ -82,6 +99,23 @@ export function sendToWorker(messageJson: string): void {
     worker.postMessage(message);
 }
 
+// Called from C# to send binary data to worker (import operations)
+export function sendBinaryToWorker(memoryView: IMemoryView, metadataJson: string): void {
+    if (!worker) {
+        throw new Error('Worker not initialized');
+    }
+
+    // Slice MemoryView to get a copy as Uint8Array
+    const data = memoryView.slice();
+    const metadata = JSON.parse(metadataJson);
+
+    // Post with transferable buffer for zero-copy transfer to worker
+    worker.postMessage(
+        { ...metadata, binaryPayload: data.buffer },
+        [data.buffer]
+    );
+}
+
 // Logger API - matches C# SqliteWasmLogLevel enum
 export const logger = {
     setLogLevel(level: number): void {
@@ -99,7 +133,8 @@ export const logger = {
 
 // Make functions available to C# JSImport
 (globalThis as any).sqliteWasmWorker = {
-    sendToWorker
+    sendToWorker,
+    sendBinaryToWorker
 };
 
 // Expose logger for C# JSImport

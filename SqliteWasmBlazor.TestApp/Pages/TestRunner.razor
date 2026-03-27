@@ -1,8 +1,10 @@
 @page "/TestRunner"
+@using SqliteWasmBlazor
 @using SqliteWasmBlazor.TestApp.TestInfrastructure
 @using Microsoft.EntityFrameworkCore
 @using SqliteWasmBlazor.Models
 @inject IDbContextFactory<TodoDbContext> DbContextFactory
+@inject ISqliteWasmDatabaseService DatabaseService
 
 <PageTitle>Test Runner</PageTitle>
 
@@ -45,7 +47,7 @@
 
     private async Task RunAllTestsAsync()
     {
-        var testFactory = new TestFactory(DbContextFactory);
+        var testFactory = new TestFactory(DbContextFactory, DatabaseService);
         var tests = testFactory.GetTests().ToList();
 
         _totalTests = tests.Count;

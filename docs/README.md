@@ -8,7 +8,7 @@ This folder contains documentation for the SqliteWasmBlazor project.
 |------|-------------|
 | [architecture.md](architecture.md) | Worker-based architecture, how it works, technical details |
 | [ado-net.md](ado-net.md) | Using SqliteWasmBlazor without EF Core, transactions |
-| [advanced-features.md](advanced-features.md) | Migrations, FTS5 search, JSON collections, logging |
+| [advanced-features.md](advanced-features.md) | Migrations, FTS5 search, JSON collections, logging, raw database import/export |
 | [patterns.md](patterns.md) | Multi-view pattern, data initialization best practices |
 | [faq.md](faq.md) | Common questions and browser support |
 

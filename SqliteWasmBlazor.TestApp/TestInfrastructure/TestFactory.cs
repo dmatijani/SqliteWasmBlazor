@@ -18,9 +18,9 @@ internal class TestFactory
 {
     private readonly List<(string Category, SqliteWasmTest Test)> _tests = [];
 
-    public TestFactory(IDbContextFactory<TodoDbContext> factory)
+    public TestFactory(IDbContextFactory<TodoDbContext> factory, ISqliteWasmDatabaseService databaseService)
     {
-        PopulateTests(factory);
+        PopulateTests(factory, databaseService);
     }
 
     public IEnumerable<(string Category, SqliteWasmTest Test)> GetTests(string? testName = null)
@@ -31,7 +31,7 @@ internal class TestFactory
         return valueTuples.Length > 0 ? valueTuples : Enumerable.Empty<(string Category, SqliteWasmTest Test)>();
     }
 
-    private void PopulateTests(IDbContextFactory<TodoDbContext> factory)
+    private void PopulateTests(IDbContextFactory<TodoDbContext> factory, ISqliteWasmDatabaseService databaseService)
     {
         // Type Marshalling Tests
         _tests.Add(("Type Marshalling", new AllTypesRoundTripTest(factory)));
@@ -107,6 +107,19 @@ internal class TestFactory
         _tests.Add(("Import/Export", new ExportImportDeltaConflictLocalWinsTest(factory)));
         _tests.Add(("Import/Export", new ExportImportDeltaConflictDeltaWinsTest(factory)));
         _tests.Add(("Import/Export", new ExportImportDeltaDeletionTest(factory)));
+
+        // Raw Database Import/Export Tests
+        _tests.Add(("Import/Export", new RawDatabaseExportImportTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseImportInvalidFileTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseImportWithBackupTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseBackupRestoreOnFailureTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseExportReOpenTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseImportIntoNewTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseImportIncompatibleSchemaTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseAutoReOpenAfterImportTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseSequentialImportTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseImportThenExportTest(factory, databaseService)));
+        _tests.Add(("Import/Export", new RawDatabaseSchemaValidationTest(factory, databaseService)));
 
         // Checkpoint Tests (rollback and restore functionality)
         _tests.Add(("Checkpoints", new RestoreToCheckpointBasicTest(factory)));

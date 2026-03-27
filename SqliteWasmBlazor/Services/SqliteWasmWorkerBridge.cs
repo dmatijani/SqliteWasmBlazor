@@ -33,10 +33,23 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
     private static readonly Lazy<SqliteWasmWorkerBridge> _instance = new(() => new SqliteWasmWorkerBridge());
     public static SqliteWasmWorkerBridge Instance => _instance.Value;
 
+    /// <summary>
+    /// First 16 bytes of every valid SQLite database file.
+    /// </summary>
+    private static ReadOnlySpan<byte> SqliteHeaderMagic => "SQLite format 3\0"u8;
+
     private readonly ConcurrentDictionary<int, TaskCompletionSource<SqlQueryResult>> _pendingRequests = new();
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<byte[]>> _pendingBinaryRequests = new();
+    private readonly HashSet<string> _openDatabases = new();
     private int _nextRequestId;
     private bool _isInitialized;
     private static TaskCompletionSource<bool>? _initializationTcs;
+
+    /// <summary>
+    /// Checks if the worker has a database open. Used by SqliteWasmConnection
+    /// to detect stale C# connection state after import/export/close operations.
+    /// </summary>
+    internal bool IsDatabaseOpen(string database) => _openDatabases.Contains(database);
 
     // ReSharper disable once InconsistentNaming
     private static readonly Lazy<JsonSerializerOptions> _deserializerOptions = new(() =>
@@ -111,6 +124,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         };
 
         await SendRequestAsync(request, cancellationToken);
+        _openDatabases.Add(database);
     }
 
     /// <summary>
@@ -129,6 +143,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         };
 
         await SendRequestAsync(request, cancellationToken);
+        _openDatabases.Remove(databaseName);
     }
 
     /// <summary>
@@ -185,6 +200,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         };
 
         await SendRequestAsync(request, cancellationToken);
+        _openDatabases.Remove(databaseName);
     }
 
     /// <summary>
@@ -202,6 +218,115 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         };
 
         await SendRequestAsync(request, cancellationToken);
+        _openDatabases.Remove(oldName);
+    }
+
+    /// <summary>
+    /// Import a raw .db file into OPFS SAHPool storage.
+    /// Validates SQLite header before sending to worker.
+    /// </summary>
+    public async Task ImportDatabaseAsync(string databaseName, byte[] data, CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        // Validate SQLite header
+        if (data.Length < 16 || !data.AsSpan(0, 16).SequenceEqual(SqliteHeaderMagic))
+        {
+            throw new ArgumentException("Data is not a valid SQLite database file (invalid header).", nameof(data));
+        }
+
+        var requestId = Interlocked.Increment(ref _nextRequestId);
+        var tcs = new TaskCompletionSource<SqlQueryResult>();
+
+        _pendingRequests[requestId] = tcs;
+
+        try
+        {
+            await using var registration = cancellationToken.Register(() =>
+            {
+                _pendingRequests.TryRemove(requestId, out _);
+                tcs.TrySetCanceled();
+            });
+
+            var metadataJson = JsonSerializer.Serialize(new
+            {
+                id = requestId,
+                data = new { type = "importDb", database = databaseName }
+            });
+
+            SendBinaryToWorker(new ArraySegment<byte>(data), metadataJson);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(60000);
+
+            try
+            {
+                await tcs.Task.WaitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("Import database operation timed out after 60 seconds.");
+            }
+
+            // Worker closes the DB during import
+            _openDatabases.Remove(databaseName);
+        }
+        catch
+        {
+            _pendingRequests.TryRemove(requestId, out _);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Export a raw .db file from OPFS SAHPool storage.
+    /// Database is closed before export for a consistent snapshot.
+    /// </summary>
+    public async Task<byte[]> ExportDatabaseAsync(string databaseName, CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        var requestId = Interlocked.Increment(ref _nextRequestId);
+        var tcs = new TaskCompletionSource<byte[]>();
+
+        _pendingBinaryRequests[requestId] = tcs;
+
+        try
+        {
+            await using var registration = cancellationToken.Register(() =>
+            {
+                _pendingBinaryRequests.TryRemove(requestId, out _);
+                tcs.TrySetCanceled();
+            });
+
+            var requestJson = JsonSerializer.Serialize(new
+            {
+                id = requestId,
+                data = new { type = "exportDb", database = databaseName }
+            });
+
+            SendToWorker(requestJson);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(60000);
+
+            try
+            {
+                var result = await tcs.Task.WaitAsync(timeoutCts.Token);
+                // Worker closes the DB during export for consistent snapshot
+                _openDatabases.Remove(databaseName);
+                return result;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("Export database operation timed out after 60 seconds.");
+            }
+        }
+        catch
+        {
+            _pendingBinaryRequests.TryRemove(requestId, out _);
+            throw;
+        }
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
@@ -281,17 +406,25 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
                 return;
             }
 
-            if (Instance._pendingRequests.TryRemove(message.Id, out var tcs))
-            {
-                var response = message.Data;
+            var response = message.Data;
 
-                // Check for error response
-                if (!response.Success)
+            // Check for error response — route to either pending requests or pending binary requests
+            if (!response.Success)
+            {
+                if (Instance._pendingRequests.TryRemove(message.Id, out var errorTcs))
                 {
-                    tcs.TrySetException(new InvalidOperationException($"Worker error: {response.Error ?? "Unknown error"}"));
-                    return;
+                    errorTcs.TrySetException(new InvalidOperationException($"Worker error: {response.Error ?? "Unknown error"}"));
+                }
+                else if (Instance._pendingBinaryRequests.TryRemove(message.Id, out var binaryErrorTcs))
+                {
+                    binaryErrorTcs.TrySetException(new InvalidOperationException($"Worker error: {response.Error ?? "Unknown error"}"));
                 }
 
+                return;
+            }
+
+            if (Instance._pendingRequests.TryRemove(message.Id, out var tcs))
+            {
                 // Create SqlQueryResult for non-execute operations (open, close, exists)
                 var result = new SqlQueryResult
                 {
@@ -455,6 +588,30 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
     }
 
     /// <summary>
+    /// Callback for raw binary responses from worker (export operations).
+    /// Uint8Array is marshalled to byte array.
+    /// </summary>
+    [JSExport]
+    public static void OnWorkerResponseRawBinary(int requestId, byte[] data)
+    {
+        try
+        {
+            if (Instance._pendingBinaryRequests.TryRemove(requestId, out var tcs))
+            {
+                tcs.TrySetResult(data);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Worker Bridge] Raw binary response processing failed: {ex}");
+            if (Instance._pendingBinaryRequests.TryRemove(requestId, out var tcs))
+            {
+                tcs.TrySetException(ex);
+            }
+        }
+    }
+
+    /// <summary>
     /// Called from JavaScript when worker signals ready.
     /// </summary>
     [JSExport]
@@ -474,6 +631,9 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
 
     [JSImport("sendToWorker", "sqliteWasmWorker")]
     private static partial void SendToWorker(string messageJson);
+
+    [JSImport("sendBinaryToWorker", "sqliteWasmWorker")]
+    private static partial void SendBinaryToWorker([JSMarshalAs<JSType.MemoryView>] ArraySegment<byte> data, string metadataJson);
 }
 
 /// <summary>

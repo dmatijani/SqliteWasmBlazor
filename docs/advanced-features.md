@@ -177,3 +177,47 @@ var expensive = await dbContext.Products
 ```
 
 EF Core automatically translates decimal operations to the appropriate `ef_*` functions, ensuring correct arithmetic in SQLite (which doesn't have native decimal support).
+
+## Raw Database Import/Export
+
+Export and import complete SQLite .db files directly from/to OPFS via `ISqliteWasmDatabaseService`:
+
+```csharp
+@inject ISqliteWasmDatabaseService DatabaseService
+
+// Export raw .db file
+byte[] data = await DatabaseService.ExportDatabaseAsync("TodoDb.db");
+
+// Import raw .db file (validates SQLite header)
+await DatabaseService.ImportDatabaseAsync("TodoDb.db", data);
+```
+
+Both operations close the database in the worker. The connection state tracking ensures EF Core automatically re-opens the database on the next query.
+
+### Schema Validation
+
+Validate that an imported database matches the expected EF model schema:
+
+```csharp
+using SqliteWasmBlazor.Models.Extensions;
+
+await using var ctx = await DbContextFactory.CreateDbContextAsync();
+await ctx.ValidateSchemaAsync();
+// Throws InvalidOperationException with missing table names if schema doesn't match
+```
+
+Table names are derived from EF model metadata — no hardcoded strings.
+
+### Safe Import Pattern
+
+Use rename-based backup for atomic import with rollback:
+
+```csharp
+await DatabaseService.CloseDatabaseAsync("TodoDb.db");
+await DatabaseService.RenameDatabaseAsync("TodoDb.db", "TodoDb.backup.db");
+await DatabaseService.ImportDatabaseAsync("TodoDb.db", data);
+
+// Validate, then either delete backup (success) or restore it (failure)
+```
+
+See [Changelog](../CHANGELOG.md#raw-database-importexport) for full implementation details.

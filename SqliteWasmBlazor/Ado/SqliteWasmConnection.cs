@@ -50,7 +50,10 @@ public sealed class SqliteWasmConnection : DbConnection
 
     public override string ServerVersion => "3.47.0"; // sqlite-wasm version
 
-    public override ConnectionState State => _state;
+    public override ConnectionState State =>
+        _state == ConnectionState.Open && !_bridge.IsDatabaseOpen(Database)
+            ? ConnectionState.Closed
+            : _state;
 
     private string GetDatabaseName()
     {
@@ -78,7 +81,7 @@ public sealed class SqliteWasmConnection : DbConnection
     {
         // EF Core's EnsureCreatedAsync may call synchronous Open() in some paths
         // We can't await in WebAssembly, but we can fire-and-forget the async operation
-        if (_state == ConnectionState.Open)
+        if (_state == ConnectionState.Open && _bridge.IsDatabaseOpen(Database))
         {
             return;
         }
@@ -91,7 +94,9 @@ public sealed class SqliteWasmConnection : DbConnection
 
     public override async Task OpenAsync(CancellationToken cancellationToken)
     {
-        if (_state == ConnectionState.Open)
+        // Check both C# state AND worker state to detect stale connections
+        // after import/export/close/delete/rename operations
+        if (_state == ConnectionState.Open && _bridge.IsDatabaseOpen(Database))
         {
             return;
         }

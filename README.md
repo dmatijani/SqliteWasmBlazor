@@ -21,6 +21,7 @@ The public API surface is intentionally kept minimal to reduce the risk of break
 
 ## What's New
 
+- **Raw Database Import/Export** - Export and import complete .db files directly from/to OPFS with schema validation and automatic backup/restore on failure [(details)](CHANGELOG.md#raw-database-importexport)
 - **Multi-Database Support** - Run multiple independent SQLite databases simultaneously in the same Web Worker, each with its own OPFS file, DbContext, and migration history. Supports cross-database references via loose Guid linking [(details)](docs/multi-database.md)
 - **Multi-View Demo** - Floating draggable/resizable dialog windows using lightweight JS interop on top of standard MudBlazor dialogs [(details)](docs/patterns.md#multi-view-instead-of-multi-tab)
 - **Incremental Database Export/Import** - File-based delta sync with checkpoint management and conflict resolution for offline-first PWAs [(details)](CHANGELOG.md#incremental-database-exportimport-delta-sync)
@@ -81,6 +82,12 @@ public interface ISqliteWasmDatabaseService
 
     /// <summary>Close a database connection in the worker.</summary>
     Task CloseDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
+
+    /// <summary>Import a raw .db file into OPFS.</summary>
+    Task ImportDatabaseAsync(string databaseName, byte[] data, CancellationToken cancellationToken = default);
+
+    /// <summary>Export a raw .db file from OPFS.</summary>
+    Task<byte[]> ExportDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
 }
 ```
 
@@ -97,6 +104,18 @@ public interface ISqliteWasmDatabaseService
 
         await using var context = await DbContextFactory.CreateDbContextAsync();
         await context.Database.MigrateAsync();
+    }
+
+    private async Task ExportAsync()
+    {
+        // Export raw .db file (closes DB for consistent snapshot, auto-reopens on next query)
+        byte[] data = await DatabaseService.ExportDatabaseAsync("MyApp.db");
+    }
+
+    private async Task ImportAsync(byte[] data)
+    {
+        // Import raw .db file (validates SQLite header)
+        await DatabaseService.ImportDatabaseAsync("MyApp.db", data);
     }
 }
 ```
@@ -316,8 +335,9 @@ All modern browsers (2023+) support OPFS with Synchronous Access Handles, includ
 - [x] FTS5 full-text search with highlighting and snippets
 - [x] MudBlazor demo app
 - [x] NuGet package pre-release
-- [x] Database export/import API
+- [x] Database export/import API (MessagePack serialization + raw .db files)
 - [x] Backup/restore utilities (delta sync with checkpoints)
+- [x] Raw database import/export with schema validation
 - [ ] Stable NuGet package release
 - [x] Multi-database support
 - [ ] Performance profiling tools

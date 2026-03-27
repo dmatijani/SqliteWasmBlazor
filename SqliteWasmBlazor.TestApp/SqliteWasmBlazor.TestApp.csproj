@@ -12,7 +12,6 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" PrivateAssets="all" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
         <PackageReference Include="MudBlazor" Version="9.2.0" />
         <!-- Exclude large (1.1MB) SQLitePCLRaw native library - SqliteWasmBlazor provides minimal (9.8KB) stub -->
         <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="$(SqlitePCLRawVersion)" ExcludeAssets="native;buildTransitive" />
@@ -22,7 +21,6 @@
     <ItemGroup>
         <NativeFileReference Include="..\SqliteWasmBlazor\native\lib\e_sqlite3.a" />
         <ProjectReference Include="..\SqliteWasmBlazor.Models\SqliteWasmBlazor.Models.csproj" />
-        <ProjectReference Include="..\SqliteWasmBlazor\SqliteWasmBlazor.csproj" />
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\SqliteWasmBlazor.Components\SqliteWasmBlazor.Components.csproj" />

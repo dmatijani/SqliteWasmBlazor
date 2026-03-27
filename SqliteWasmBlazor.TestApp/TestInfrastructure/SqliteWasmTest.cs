@@ -3,11 +3,12 @@ using SqliteWasmBlazor.Models;
 
 namespace SqliteWasmBlazor.TestApp.TestInfrastructure;
 
-internal abstract class SqliteWasmTest(IDbContextFactory<TodoDbContext> factory)
+internal abstract class SqliteWasmTest(IDbContextFactory<TodoDbContext> factory, ISqliteWasmDatabaseService? databaseService = null)
 {
     public abstract string Name { get; }
 
     protected IDbContextFactory<TodoDbContext> Factory { get; } = factory;
+    protected ISqliteWasmDatabaseService? DatabaseService { get; } = databaseService;
 
     /// <summary>
     /// Override this to skip automatic database creation for tests that manage their own database lifecycle.
