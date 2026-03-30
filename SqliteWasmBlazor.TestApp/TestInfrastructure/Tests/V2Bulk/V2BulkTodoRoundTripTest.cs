@@ -45,16 +45,16 @@ internal class V2BulkTodoRoundTripTest(IDbContextFactory<TodoDbContext> factory,
             recordCount: 0,
             sqlTypeOverrides: TodoSqlTypeOverrides).Columns;
 
-        var exportMetadata = new
+        var exportMetadata = new BulkExportMetadata
         {
-            tableName = "TodoItems",
-            columns,
-            primaryKeyColumn = "Id",
-            schemaHash = SchemaHashGenerator.ComputeHash<TodoItemDto>(),
-            dataType = typeof(TodoItemDto).FullName ?? typeof(TodoItemDto).Name,
-            mode = 0,
-            where = "\"IsDeleted\" = 0",
-            orderBy = "\"UpdatedAt\" DESC"
+            TableName = "TodoItems",
+            Columns = columns,
+            PrimaryKeyColumn = "Id",
+            SchemaHash = SchemaHashGenerator.ComputeHash<TodoItemDto>(),
+            DataType = typeof(TodoItemDto).FullName ?? typeof(TodoItemDto).Name,
+            Mode = 0,
+            Where = "\"IsDeleted\" = 0",
+            OrderBy = "\"UpdatedAt\" DESC"
         };
 
         var exportedBytes = await DatabaseService.BulkExportAsync("TestDb.db", exportMetadata);

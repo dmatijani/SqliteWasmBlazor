@@ -74,16 +74,16 @@ internal class V2BulkAllTypesRoundTripTest(IDbContextFactory<TodoDbContext> fact
             primaryKeyColumn: "Id",
             recordCount: 0).Columns;
 
-        var exportMetadata = new
+        var exportMetadata = new BulkExportMetadata
         {
-            tableName = "TypeTests",
-            columns,
-            primaryKeyColumn = "Id",
-            schemaHash,
-            dataType = typeof(TypeTestDto).FullName ?? typeof(TypeTestDto).Name,
-            mode = 0,
-            where = (string?)null,
-            orderBy = "\"Id\" ASC"
+            TableName = "TypeTests",
+            Columns = columns,
+            PrimaryKeyColumn = "Id",
+            SchemaHash = schemaHash,
+            DataType = typeof(TypeTestDto).FullName ?? typeof(TypeTestDto).Name,
+            Mode = 0,
+            Where = (string?)null,
+            OrderBy = "\"Id\" ASC"
         };
 
         var exportedBytes = await DatabaseService.BulkExportAsync("TestDb.db", exportMetadata);

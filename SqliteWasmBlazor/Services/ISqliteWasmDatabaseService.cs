@@ -80,5 +80,5 @@ public interface ISqliteWasmDatabaseService
     /// <param name="exportMetadata">Export parameters (tableName, columns, where, orderBy, etc.)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>V2 MessagePack bytes (header + serialized rows)</returns>
-    Task<byte[]> BulkExportAsync(string databaseName, object exportMetadata, CancellationToken cancellationToken = default);
+    Task<byte[]> BulkExportAsync(string databaseName, BulkExportMetadata exportMetadata, CancellationToken cancellationToken = default);
 }

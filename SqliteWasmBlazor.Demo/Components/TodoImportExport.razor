@@ -5,7 +5,6 @@
 @using SqliteWasmBlazor.Models.Extensions
 @using SqliteWasmBlazor.Models.Enums
 @using SqliteWasmBlazor.Models.Models
-@using SqliteWasmBlazor.Components.Components
 @using SqliteWasmBlazor.Components.Interop
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Runtime.Versioning
@@ -361,18 +360,18 @@
                 recordCount: 0,
                 sqlTypeOverrides: TodoItemSqlTypeOverrides).Columns;
 
-            var exportMetadata = new
+            var exportMetadata = new BulkExportMetadata
             {
-                tableName = "TodoItems",
-                columns,
-                primaryKeyColumn = "Id",
-                schemaHash = _schemaHash,
-                dataType = typeof(TodoItemDto).FullName ?? typeof(TodoItemDto).Name,
-                appIdentifier = AppIdentifier,
-                mode = _exportMode == ExportMode.Full ? 0 : 1,
-                where,
-                whereParams,
-                orderBy = "\"UpdatedAt\" DESC"
+                TableName = "TodoItems",
+                Columns = columns,
+                PrimaryKeyColumn = "Id",
+                SchemaHash = _schemaHash,
+                DataType = typeof(TodoItemDto).FullName ?? typeof(TodoItemDto).Name,
+                AppIdentifier = AppIdentifier,
+                Mode = _exportMode == ExportMode.Full ? 0 : 1,
+                Where = where,
+                WhereParams = whereParams,
+                OrderBy = "\"UpdatedAt\" DESC"
             };
 
             var partSizeMb = Configuration.GetValue("exportPartSizeMb", 250);
@@ -380,21 +379,8 @@
 
             // Estimate items per part: export a small sample to measure avg bytes per item
             const int sampleSize = 1000;
-            var sampleMetadata = new
-            {
-                exportMetadata.tableName,
-                exportMetadata.columns,
-                exportMetadata.primaryKeyColumn,
-                exportMetadata.schemaHash,
-                exportMetadata.dataType,
-                exportMetadata.appIdentifier,
-                exportMetadata.mode,
-                exportMetadata.where,
-                exportMetadata.whereParams,
-                orderBy = exportMetadata.orderBy + $" LIMIT {sampleSize}"
-            };
-
-            var sampleData = await DatabaseService.BulkExportAsync(DatabaseName, sampleMetadata, cancellationToken);
+            var sampleData = await DatabaseService.BulkExportAsync(DatabaseName,
+                exportMetadata with { OrderBy = exportMetadata.OrderBy + $" LIMIT {sampleSize}" }, cancellationToken);
             var sampleHeader = MessagePackSerializer.Deserialize<MessagePackFileHeaderV2>(sampleData);
             var sampleCount = sampleHeader.RecordCount;
 
@@ -450,25 +436,13 @@
                 cancellationToken.ThrowIfCancellationRequested();
                 partIndex++;
 
-                var pagedMetadata = new
-                {
-                    exportMetadata.tableName,
-                    exportMetadata.columns,
-                    exportMetadata.primaryKeyColumn,
-                    exportMetadata.schemaHash,
-                    exportMetadata.dataType,
-                    exportMetadata.appIdentifier,
-                    exportMetadata.mode,
-                    exportMetadata.where,
-                    exportMetadata.whereParams,
-                    orderBy = exportMetadata.orderBy + $" LIMIT {partSize} OFFSET {totalExported}"
-                };
-
                 _exportStatus = $"Exporting part {partIndex} ({totalExported:N0} / {totalItemCount:N0})...";
                 StateHasChanged();
                 await Task.Yield();
 
-                var partData = await DatabaseService.BulkExportAsync(DatabaseName, pagedMetadata, cancellationToken);
+                var partData = await DatabaseService.BulkExportAsync(DatabaseName,
+                    exportMetadata with { OrderBy = exportMetadata.OrderBy + $" LIMIT {partSize} OFFSET {totalExported}" },
+                    cancellationToken);
                 var partHeader = MessagePackSerializer.Deserialize<MessagePackFileHeaderV2>(partData);
 
                 if (partHeader.RecordCount == 0)

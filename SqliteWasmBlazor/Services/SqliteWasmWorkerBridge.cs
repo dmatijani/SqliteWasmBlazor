@@ -52,18 +52,16 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
     internal bool IsDatabaseOpen(string database) => _openDatabases.Contains(database);
 
     // ReSharper disable once InconsistentNaming
-    private static readonly Lazy<JsonSerializerOptions> _deserializerOptions = new(() =>
+    private static readonly Lazy<JsonSerializerOptions> _jsonOptions = new(() =>
     {
-        var options = new JsonSerializerOptions
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
             TypeInfoResolver = WorkerJsonContext.Default
         };
         return options;
     });
 
-    private static JsonSerializerOptions DeserializerOptions => _deserializerOptions.Value;
+    private static JsonSerializerOptions JsonOptions => _jsonOptions.Value;
 
     // ReSharper disable once InconsistentNaming
     private static readonly Lazy<MessagePackSerializerOptions> _messagePackOptions = new(() =>
@@ -383,7 +381,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
     /// <summary>
     /// Bulk export: worker queries SQLite directly and returns V2 MessagePack bytes.
     /// </summary>
-    public async Task<byte[]> BulkExportAsync(string databaseName, object exportMetadata, CancellationToken cancellationToken = default)
+    public async Task<byte[]> BulkExportAsync(string databaseName, BulkExportMetadata exportMetadata, CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
 
@@ -401,7 +399,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
             });
 
             // Merge exportMetadata into the request data alongside type and database
-            var dataDict = JsonSerializer.SerializeToNode(exportMetadata)?.AsObject()
+            var dataDict = JsonSerializer.SerializeToNode(exportMetadata, JsonOptions)?.AsObject()
                 ?? new System.Text.Json.Nodes.JsonObject();
             dataDict["type"] = "bulkExport";
             dataDict["database"] = databaseName;
@@ -465,12 +463,12 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
 
             SendToWorker(requestJson);
 
-            // Add timeout to detect when another tab has the database locked
-            // Use longer timeout in debug mode for operations like VACUUM INTO
+            // Timeout for general SQL operations.
+            // Must be long enough for heavy operations like FTS5 rebuild on large databases.
 #if DEBUG
-            const int defaultTimeoutMs = 60000; // 60 seconds in debug
+            const int defaultTimeoutMs = 300_000; // 5 minutes in debug
 #else
-            const int defaultTimeoutMs = 30000; // 30 seconds in release
+            const int defaultTimeoutMs = 300_000; // 5 minutes in release
 #endif
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(defaultTimeoutMs);
@@ -503,7 +501,7 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
         try
         {
             // Single deserialization to typed wrapper (id + data) with custom converter
-            var message = JsonSerializer.Deserialize<WorkerMessage>(messageJson, DeserializerOptions);
+            var message = JsonSerializer.Deserialize<WorkerMessage>(messageJson, JsonOptions);
 
             if (message is null)
             {
@@ -773,6 +771,7 @@ internal sealed class WorkerResponse
 [JsonSerializable(typeof(WorkerMessage))]
 [JsonSerializable(typeof(WorkerResponse))]
 [JsonSerializable(typeof(SqlQueryResult))]
+[JsonSerializable(typeof(BulkExportMetadata))]
 internal partial class WorkerJsonContext : JsonSerializerContext
 {
 }

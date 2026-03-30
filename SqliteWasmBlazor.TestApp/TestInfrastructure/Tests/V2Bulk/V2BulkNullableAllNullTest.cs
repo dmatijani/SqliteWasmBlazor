@@ -57,14 +57,14 @@ internal class V2BulkNullableAllNullTest(IDbContextFactory<TodoDbContext> factor
             primaryKeyColumn: "Id",
             recordCount: 0).Columns;
 
-        var exportMetadata = new
+        var exportMetadata = new BulkExportMetadata
         {
-            tableName = "TypeTests",
-            columns,
-            primaryKeyColumn = "Id",
-            schemaHash = SchemaHashGenerator.ComputeHash<TypeTestDto>(),
-            dataType = typeof(TypeTestDto).FullName ?? typeof(TypeTestDto).Name,
-            mode = 0,
+            TableName = "TypeTests",
+            Columns = columns,
+            PrimaryKeyColumn = "Id",
+            SchemaHash = SchemaHashGenerator.ComputeHash<TypeTestDto>(),
+            DataType = typeof(TypeTestDto).FullName ?? typeof(TypeTestDto).Name,
+            Mode = 0,
         };
 
         var exportedBytes = await DatabaseService.BulkExportAsync("TestDb.db", exportMetadata);

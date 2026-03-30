@@ -21,11 +21,12 @@ The public API surface is intentionally kept minimal to reduce the risk of break
 
 ## What's New
 
+- **V2 Worker-Side Bulk Import/Export** - Worker-side prepared statement loops for 10-50x faster import. Self-describing V2 MessagePack format with column metadata. Memory-safe streaming for large datasets [(details)](CHANGELOG.md#v2-worker-side-bulk-importexport)
+- **Multi-Part Export** - Large databases automatically split into manageable parts with a meta file. Adaptive part sizing based on configurable MB limit
+- **Seed Server** - PHP REST API + Blazor UI for uploading/downloading seed files to/from a server. One-click database provisioning for new clients [(details)](#seed-server)
 - **Raw Database Import/Export** - Export and import complete .db files directly from/to OPFS with schema validation and automatic backup/restore on failure [(details)](CHANGELOG.md#raw-database-importexport)
-- **Multi-Database Support** - Run multiple independent SQLite databases simultaneously in the same Web Worker, each with its own OPFS file, DbContext, and migration history. Supports cross-database references via loose Guid linking [(details)](docs/multi-database.md)
-- **Multi-View Demo** - Floating draggable/resizable dialog windows using lightweight JS interop on top of standard MudBlazor dialogs [(details)](docs/patterns.md#multi-view-instead-of-multi-tab)
-- **Incremental Database Export/Import** - File-based delta sync with checkpoint management and conflict resolution for offline-first PWAs [(details)](CHANGELOG.md#incremental-database-exportimport-delta-sync)
-- **Database Import/Export** - Schema-validated MessagePack serialization for backups and data migration [(details)](CHANGELOG.md#database-importexport)
+- **Multi-Database Support** - Run multiple independent SQLite databases simultaneously in the same Web Worker [(details)](docs/multi-database.md)
+- **Incremental Database Export/Import** - File-based delta sync with checkpoint management and conflict resolution [(details)](CHANGELOG.md#incremental-database-exportimport-delta-sync)
 - **Real-World Sample** - Check out the [Datasync TodoApp](https://github.com/b-straub/Datasync/tree/main/samples/todoapp-blazor-wasm-offline) for offline-first data synchronization with SqliteWasmBlazor
 
 ## Breaking Changes
@@ -71,23 +72,22 @@ The primary interface for database operations outside of EF Core:
 ```csharp
 public interface ISqliteWasmDatabaseService
 {
-    /// <summary>Check if a database exists in OPFS.</summary>
-    Task<bool> ExistsDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
+    // Database management
+    Task<bool> ExistsDatabaseAsync(string databaseName, CancellationToken ct = default);
+    Task DeleteDatabaseAsync(string databaseName, CancellationToken ct = default);
+    Task RenameDatabaseAsync(string oldName, string newName, CancellationToken ct = default);
+    Task CloseDatabaseAsync(string databaseName, CancellationToken ct = default);
 
-    /// <summary>Delete a database from OPFS.</summary>
-    Task DeleteDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
+    // Raw .db file import/export
+    Task ImportDatabaseAsync(string databaseName, byte[] data, CancellationToken ct = default);
+    Task<byte[]> ExportDatabaseAsync(string databaseName, CancellationToken ct = default);
 
-    /// <summary>Rename a database in OPFS (atomic operation).</summary>
-    Task RenameDatabaseAsync(string oldName, string newName, CancellationToken cancellationToken = default);
-
-    /// <summary>Close a database connection in the worker.</summary>
-    Task CloseDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
-
-    /// <summary>Import a raw .db file into OPFS.</summary>
-    Task ImportDatabaseAsync(string databaseName, byte[] data, CancellationToken cancellationToken = default);
-
-    /// <summary>Export a raw .db file from OPFS.</summary>
-    Task<byte[]> ExportDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
+    // V2 bulk import/export (worker-side prepared statement loops)
+    Task<int> BulkImportAsync(string databaseName, byte[] payload,
+        ConflictResolutionStrategy conflictStrategy = ConflictResolutionStrategy.None,
+        CancellationToken ct = default);
+    Task<byte[]> BulkExportAsync(string databaseName, BulkExportMetadata metadata,
+        CancellationToken ct = default);
 }
 ```
 
@@ -310,9 +310,58 @@ var expensive = await dbContext.Products
 | [ADO.NET Usage](docs/ado-net.md) | Using SqliteWasmBlazor without EF Core, transactions |
 | [Advanced Features](docs/advanced-features.md) | Migrations, FTS5 search, JSON collections, logging |
 | [Multi-Database](docs/multi-database.md) | Running multiple databases, cross-database references |
+| [Bulk Import/Export](docs/bulk-import-export.md) | V2 format, multi-part export, delta sync, type conversions |
+| [Seed Server](docs/seed-server.md) | PHP API setup, cloud seeding, Herd/Apache configuration |
 | [Recommended Patterns](docs/patterns.md) | Multi-view pattern, data initialization best practices |
 | [FAQ](docs/faq.md) | Common questions and browser support |
 | [Changelog](CHANGELOG.md) | Release notes and version history |
+
+## Seed Server
+
+The Seed Server enables cloud-based database provisioning — upload seed data from one client and download it on another. Useful for initial client-side database setup without building the data locally.
+
+### Setup
+
+The `SeedApi/` folder contains a PHP REST API:
+
+```bash
+# Local development with Herd/Valet
+cd SeedApi
+herd link seed-api
+herd secure seed-api
+
+# Production (Apache) — just copy these files:
+# seed-api.php, index.php, .htaccess
+```
+
+Configure the client in `wwwroot/appsettings.json`:
+```json
+{
+  "seedApiUrl": "seed-api.test",
+  "exportPartSizeMb": 250,
+  "cloudPartSizeMb": 40
+}
+```
+
+The `seedApiUrl` is the server domain (without protocol). It can be temporarily overridden on the Seed Server page — useful for testing with the deployed GitHub Pages demo.
+
+### API Endpoints
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/api/seeds` | List all seeds |
+| GET | `/api/seeds/{name}` | Seed metadata |
+| GET | `/api/seeds/{name}/{file}` | Download file |
+| POST | `/api/seeds/{name}` | Upload file (multipart form) |
+| DELETE | `/api/seeds/{name}` | Delete seed + all parts |
+
+### Configuration
+
+- `exportPartSizeMb` — max part size in MB for local file export (default: 250)
+- `cloudPartSizeMb` — max part size in MB for cloud upload (auto-synced from `.htaccess` at build time, default: 40)
+- PHP upload limits in `SeedApi/.htaccess` control the server-side maximum
+
+See [Seed Server docs](docs/seed-server.md) for detailed setup instructions.
 
 ## Browser Support
 
@@ -338,9 +387,12 @@ All modern browsers (2023+) support OPFS with Synchronous Access Handles, includ
 - [x] Database export/import API (MessagePack serialization + raw .db files)
 - [x] Backup/restore utilities (delta sync with checkpoints)
 - [x] Raw database import/export with schema validation
-- [ ] Stable NuGet package release
 - [x] Multi-database support
-- [ ] Performance profiling tools
+- [x] V2 worker-side bulk import/export with prepared statement loops
+- [x] Multi-part export for large databases
+- [x] Seed Server API for cloud-based database provisioning
+- [ ] Stable NuGet package release
+- [ ] Server-side delta generation from SQLite databases
 
 ## Contributing
 

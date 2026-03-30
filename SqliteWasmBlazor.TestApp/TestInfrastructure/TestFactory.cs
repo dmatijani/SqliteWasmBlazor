@@ -94,21 +94,6 @@ internal class TestFactory
         _tests.Add(("EF Core Functions", new ComplexDecimalQueryTest(factory)));
         _tests.Add(("EF Core Functions", new AggregateBuiltInTest(factory)));
 
-        // Import/Export Tests (MessagePack serialization with schema validation)
-        _tests.Add(("Import/Export", new ExportImportRoundTripTest(factory)));
-        _tests.Add(("Import/Export", new ExportImportLargeDatasetTest(factory)));
-        _tests.Add(("Import/Export", new ImportIncompatibleSchemaVersionTest(factory)));
-        _tests.Add(("Import/Export", new ImportIncompatibleAppIdTest(factory)));
-        _tests.Add(("Import/Export", new ExportImportEmptyDatabaseTest(factory)));
-        _tests.Add(("Import/Export", new ExportImportIncrementalBatchesTest(factory)));
-
-        // Delta Import/Export Tests (incremental sync with conflict resolution)
-        _tests.Add(("Import/Export", new ExportImportDeltaBasicTest(factory)));
-        _tests.Add(("Import/Export", new ExportImportDeltaConflictTest(factory)));
-        _tests.Add(("Import/Export", new ExportImportDeltaConflictLocalWinsTest(factory)));
-        _tests.Add(("Import/Export", new ExportImportDeltaConflictDeltaWinsTest(factory)));
-        _tests.Add(("Import/Export", new ExportImportDeltaDeletionTest(factory)));
-
         // Raw Database Import/Export Tests
         _tests.Add(("Import/Export", new RawDatabaseExportImportTest(factory, databaseService)));
         _tests.Add(("Import/Export", new RawDatabaseImportInvalidFileTest(factory, databaseService)));
@@ -130,6 +115,9 @@ internal class TestFactory
         _tests.Add(("V2 Bulk", new V2BulkTodoRoundTripTest(factory, databaseService)));
         _tests.Add(("V2 Bulk", new V2BulkAllTypesRoundTripTest(factory, databaseService)));
         _tests.Add(("V2 Bulk", new V2BulkNullableAllNullTest(factory, databaseService)));
+        _tests.Add(("V2 Bulk", new V2BulkConflictLastWriteWinsTest(factory, databaseService)));
+        _tests.Add(("V2 Bulk", new V2BulkConflictLocalWinsTest(factory, databaseService)));
+        _tests.Add(("V2 Bulk", new V2BulkConflictDeltaWinsTest(factory, databaseService)));
     }
 }
 

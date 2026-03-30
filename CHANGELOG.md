@@ -2,6 +2,44 @@
 
 All notable changes to SqliteWasmBlazor are documented in this file.
 
+## Version 0.8.3-pre
+
+### V2 Worker-Side Bulk Import/Export
+
+Replaced per-statement SQL round-trips with worker-side prepared statement loops for dramatically faster bulk operations.
+
+**Key improvements:**
+- **10-50x faster import** — worker does `db.prepare()` + `stmt.bind()/step()/reset()` loop instead of ~800 individual `ExecuteSqlRawAsync` calls
+- **Worker-side export** — SELECT + pack happens entirely in the worker, one round-trip
+- **Memory-safe streaming** — import streams raw MessagePack bytes without C# deserialization, bounded memory per batch
+- **Self-describing V2 format** — header carries column metadata, table name, primary key, and C# type info so the worker builds SQL autonomously
+- **Multi-part export** — large databases split into delta-sized parts with a meta file, adaptive part sizing from configurable MB limit
+- **Full type coverage** — Guid (TEXT/BLOB), DateTime, TimeSpan, DateTimeOffset, decimal, char, enum, JSON collections, BigInt-safe int64
+- **Cancellation support** — all operations cancellable via CancellationToken
+
+**New API methods:**
+- `BulkImportAsync` — send V2 payload to worker for prepared statement insertion
+- `BulkExportAsync` — worker queries SQLite and returns V2 MessagePack binary
+- `BulkExportMetadata` — typed record ensuring all export fields are defined
+- `ConflictResolutionStrategy` — enum (None/LastWriteWins/LocalWins/DeltaWins)
+
+**Bug fixes:**
+- Fix int64 precision loss: `long` values > `Number.MAX_SAFE_INTEGER` sent as text in EF Core parameters
+- Fix .NET Guid byte order (little-endian groups 1-3) in both import and export
+- Fix `sqlite3_column_int64` boundary errors via SQLITE_TEXT workaround
+- Fix `AllTypesRoundTripTest` using change tracker cache instead of actual SQLite read
+
+### Seed Server
+
+PHP REST API + Blazor UI component for cloud-based database provisioning.
+
+- Upload current database to server (multi-part, with progress)
+- Download seed from server and import (with progress and cancellation)
+- Adaptive cloud part sizing synced from server PHP limits at build time
+- Server connectivity check with setup instructions
+
+See [Seed Server docs](docs/seed-server.md) for setup instructions.
+
 ## Version 0.7.2-pre
 
 ### Breaking Change: Stable Public API
