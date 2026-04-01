@@ -9,6 +9,19 @@
 
 **[Try the Live Demo](https://b-straub.github.io/SqliteWasmBlazor/)** - Experience persistent SQLite database in your browser! Can be installed as a Progressive Web App (PWA) for offline use.
 
+## Related Projects
+
+SqliteWasmBlazor is part of a family of libraries for building offline-first Blazor applications:
+
+| Project | Description |
+|---------|-------------|
+| **[RxBlazorV2](https://github.com/b-straub/RxBlazorV2)** | Reactive programming framework for Blazor built on [R3](https://github.com/Cysharp/R3). Uses Roslyn source generators for observable models with reactive property bindings, command patterns, and automatic component generation. |
+| **[BlazorPRF](https://github.com/b-straub/BlazorPRF)** | PRF-based deterministic encryption for Blazor WebAssembly using the WebAuthn PRF extension. Enables client-side encryption with biometric authentication — keys derived from passkeys for passwordless encrypt/decrypt workflows. |
+
+Together these enable a complete offline-first stack: persistent local storage (SqliteWasmBlazor) + reactive state management (RxBlazorV2) + client-side encryption with biometric auth (BlazorPRF).
+
+**Coming soon:** [BlazPulse](https://github.com/b-straub/BlazPulse) — a universal offline-first delta sync framework tying all of these together. Bidirectional sync between distributed SQLite databases with hash-protected incremental deltas and Ed25519 cryptographic authentication.
+
 ## About This Project
 
 This is a non-commercial hobby project maintained in my spare time - no fixed update cycle or roadmap. However, "hobby" refers to time and commitment, not craftsmanship: the project is developed with professional standards including proper test coverage and attention to code quality.
