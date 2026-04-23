@@ -41,6 +41,13 @@ public interface ISqliteWasmDatabaseService
     Task CloseDatabaseAsync(string databaseName, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the names of all databases in OPFS.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns></returns>
+    Task<List<string>> GetDatabaseNames(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Imports a raw .db file into OPFS.
     /// The database is not opened after import - caller must re-open when ready
     /// (e.g., after cleaning up backup files to avoid SAH pool exhaustion).

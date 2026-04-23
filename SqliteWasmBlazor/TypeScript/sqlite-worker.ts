@@ -240,6 +240,9 @@ async function handleRequest(data: WorkerRequest['data'], binaryPayload?: ArrayB
         case 'rename':
             return await renameDatabase(database!, (data as any).newName);
 
+        case 'getDatabaseNames':
+            return await getDatabaseNames();
+
         case 'importDb':
             if (!binaryPayload) {
                 throw new Error('importDb requires binaryPayload');
@@ -678,6 +681,42 @@ async function renameDatabase(oldName: string, newName: string) {
         return { success: true };
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to rename database from ${oldName} to ${newName}:`, error);
+        throw error;
+    }
+}
+
+async function getDatabaseNames() {
+    if (!sqlite3 || !poolUtil) {
+        throw new Error('SQLite not initialized');
+    }
+
+    try {
+        logger.info(MODULE_NAME, 'Getting all database names from OPFS SAHPool');
+
+        if (!poolUtil.getFileNames) {
+            logger.warn(MODULE_NAME, 'getFileNames not available on poolUtil');
+            return { success: true, rowsAffected: 0 };
+        }
+
+        const files = poolUtil.getFileNames() as string[];
+        logger.debug(MODULE_NAME, `Files in OPFS (${files.length}):`, files);
+
+        // Filter only main databases — discard WAL and journal files
+        const dbNames = files
+            .filter(f => !f.endsWith('-wal') && !f.endsWith('-journal') && !f.endsWith('-shm'))
+            .map(f => f.replace('/databases/', ''));
+
+        logger.info(MODULE_NAME, `✓ Found ${dbNames.length} database(s):`, dbNames);
+
+        // Return names as JSON string in the first row of the result
+        return {
+            columnNames: ['dbName'],
+            columnTypes: ['TEXT'],
+            rows: dbNames.map(name => [name]),
+            rowsAffected: dbNames.length
+        };
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to get database names:', error);
         throw error;
     }
 }

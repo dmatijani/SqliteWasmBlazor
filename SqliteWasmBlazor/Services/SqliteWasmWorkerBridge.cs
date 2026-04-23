@@ -145,6 +145,26 @@ internal sealed partial class SqliteWasmWorkerBridge : ISqliteWasmDatabaseServic
     }
 
     /// <summary>
+    /// Returns the names of all databases in OPFS.
+    /// </summary>
+    public async Task<List<string>> GetDatabaseNames(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        var request = new
+        {
+            type = "getDatabaseNames"
+        };
+
+        var result = await SendRequestAsync(request, cancellationToken);
+
+        return result.Rows
+            .Select(row => row[0]?.ToString() ?? string.Empty)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .ToList();
+    }
+
+    /// <summary>
     /// Execute SQL in the worker and return results.
     /// </summary>
     public async Task<SqlQueryResult> ExecuteSqlAsync(
